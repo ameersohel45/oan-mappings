@@ -1,0 +1,89 @@
+# Mausamgram: the provider's own response -> OAN /on_select.
+#
+# Reads three things:
+#   beckn     the original /select, for the context to echo and the offer to
+#             quote against
+#   _local    the point resolved before the call. The provider does not repeat
+#             it back, so the output's own coordinates have no other source
+#   response  the provider's forecast, as five fcstdayN objects
+#
+# Each forecast day becomes one typed resource. A day the provider omitted is
+# skipped rather than emitted empty, and so is a reading it did not take.
+expression: |
+  (
+    $lat := _local.lat;
+    $lon := _local.lon;
+    $days := [
+      response.fcstday1, response.fcstday2, response.fcstday3,
+      response.fcstday4, response.fcstday5
+    ];
+
+    $reading := function($name, $aggregation, $unit, $value) {
+      $exists($value) ? {
+        "parameter": $name,
+        "aggregation": $aggregation,
+        "unit": $unit,
+        "value": $value
+      }
+    };
+
+    {
+      "context": {
+        "version": beckn.context.version,
+        "action": "on_select",
+        "networkId": beckn.context.networkId,
+        "bapId": beckn.context.bapId,
+        "bapUri": beckn.context.bapUri,
+        "bppId": beckn.context.bppId,
+        "bppUri": beckn.context.bppUri,
+        "transactionId": beckn.context.transactionId,
+        "messageId": beckn.context.messageId,
+        "timestamp": $now()
+      },
+      "message": {
+        "contract": {
+          "commitments": [
+            {
+              "status": {
+                "descriptor": { "code": "QUOTED", "name": "Quoted" }
+              },
+              "offer": beckn.message.contract.commitments[0].offer,
+              "resources": $map($days, function($day) {
+                {
+                  "id": "res:mausamgram:forecast:" & $day.date,
+                  "resourceAttributes": {
+                    "@context": "https://schemas.openagrinet.global/schema/WeatherObservation/v0.1/context.jsonld",
+                    "@type": "openagrinet:WeatherObservation",
+                    "informationMode": "Direct",
+                    "observationType": "Forecast",
+                    "subjectCategories": ["Weather"],
+                    "source": {
+                      "sourceId": "mausamgram",
+                      "sourceName": "IMD Mausamgram NWP"
+                    },
+                    "location": {
+                      "type": "Point",
+                      "coordinates": [$lon, $lat]
+                    },
+                    "validity": {
+                      "startsAt": $day.date,
+                      "endsAt": $day.date
+                    },
+                    "parameters": [
+                      $reading("Rainfall", "Total", "mm", $day.rain),
+                      $reading("Temperature", "Minimum", "Cel", $day.tmin),
+                      $reading("Temperature", "Maximum", "Cel", $day.tmax),
+                      $reading("Humidity", "Minimum", "%", $day.rhmin),
+                      $reading("Humidity", "Maximum", "%", $day.rhmax),
+                      $reading("WindSpeed", "Average", "m/s", $day.wspd)
+                    ],
+                    "advisory": $day.weather_warning ? $day.weather_warning : $day.cloud_message
+                  }
+                }
+              })
+            }
+          ]
+        }
+      }
+    }
+  )
