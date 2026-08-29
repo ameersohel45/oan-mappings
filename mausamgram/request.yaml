@@ -1,0 +1,15 @@
+# Mausamgram: OAN requests -> the provider's own.
+#
+# Keyed by the Beckn action each mapping translates. Adding an action is a new
+# key here and a matching one in response.yaml -- no new file, and no registry
+# change.
+#
+# Every mapping reads:
+#   beckn    the inbound Beckn payload
+#   _local   whatever the provider step resolved before the call
+actions:
+  select: |
+    {
+      "lat": _local.lat,
+      "lon": _local.lon
+    }
