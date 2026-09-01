@@ -85,7 +85,9 @@ request: |
     $ra := beckn.message.contract.commitments[0].resources[0].resourceAttributes;
     {
       "lat": $ra.location.coordinates[1],
-      "lon": $ra.location.coordinates[0]
+      "lon": $ra.location.coordinates[0],
+      "from": $ra.validity.startsAt,
+      "to": $ra.validity.endsAt
     }
   )
 
