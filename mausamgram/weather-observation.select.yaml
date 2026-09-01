@@ -20,10 +20,14 @@
 # needs them, it takes them from what the provider echoed.
 
 # The response half follows the openagrinet:WeatherObservation v0.1 schema pack,
-# Direct mode:
+# Direct mode. The pack lives in OpenAgriNet/network-specs; it is referred to
+# here by name and version rather than by a path, because a path pins a branch
+# and a branch moves.
 #
-#   OpenAgriNet/network-specs, branch schema-packs-v0.1,
-#   schema/WeatherObservation/v0.1/attributes.yaml
+# @context is the canonical schemas.openagrinet.global identifier. In JSON-LD
+# that is a name, not a fetch target -- it does not have to resolve today, and
+# substituting a raw git URL that does would put an implementation detail on the
+# wire and break every consumer when the branch is renamed.
 #
 # Direct mode requires observationType, source, location, generatedAt and
 # parameters. informationMode is what selects those requirements: a catalog
@@ -120,7 +124,7 @@ response: |
                 {
                   "id": $selected.resources[0].id,
                   "resourceAttributes": {
-                    "@context": "https://raw.githubusercontent.com/OpenAgriNet/network-specs/schema-packs-v0.1/schema/WeatherObservation/v0.1/context.jsonld",
+                    "@context": "https://schemas.openagrinet.global/schema/WeatherObservation/v0.1/context.jsonld",
                     "@type": "openagrinet:WeatherObservation",
                     "informationMode": "Direct",
                     "observationType": "Forecast",
