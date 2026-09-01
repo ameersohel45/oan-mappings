@@ -59,6 +59,37 @@
 # Fields that are the same for every day -- the point, the source, the
 # observation type -- sit once at the top. Only what varies per day repeats.
 
+# What this capability requires of a payload, checked before either half runs.
+# A predicate that is false refuses the request with the message beside it, so
+# the caller is told what is wrong with their payload rather than that an
+# expression somewhere returned false.
+#
+# This rule used to be Go: the step read the geometry and required a Point, which
+# meant a capability with a different rule needed a different build. It is here
+# now, beside the extraction it guards.
+#
+# NOTE the consequence: nothing in the adapter enforces a geometry any more. A
+# mapping that declares no preconditions accepts whatever arrives and hands it to
+# the request half, which is exactly the configurability that was asked for --
+# and exactly why the responsibility sits in this file.
+#
+# Predicates are separate expressions, so each binds $ra for itself. The first
+# failure is the one reported, which is why the absent case comes first: it has
+# its own message rather than being folded into the type check.
+requires:
+  - test: |
+      (
+        $ra := beckn.message.contract.commitments[0].resources[0].resourceAttributes;
+        $exists($ra.location)
+      )
+    reject: "this capability needs a Point location; the request carries none"
+  - test: |
+      (
+        $ra := beckn.message.contract.commitments[0].resources[0].resourceAttributes;
+        $ra.location.type = "Point"
+      )
+    reject: "this capability needs a Point location; the provider forecasts one point at a time"
+
 # The request half decides what the provider is asked for. Whatever it produces
 # IS the request: query parameters for a method with no body, a body for one that
 # takes it.
