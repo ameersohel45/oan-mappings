@@ -73,22 +73,21 @@
 # the request half, which is exactly the configurability that was asked for --
 # and exactly why the responsibility sits in this file.
 #
-# Predicates are separate expressions, so each binds $ra for itself. The first
-# failure is the one reported, which is why the absent case comes first: it has
-# its own message rather than being folded into the type check.
-requires:
-  - test: |
+# One check, because there is one thing to say. $exists guards the type test, so
+# a request carrying no location and a request carrying a Polygon both land here
+# and both learn what this capability needs -- splitting them would be two
+# entries repeating the same sentence.
+#
+# Each check is its own expression and binds $ra for itself; there is no shared
+# scope with the halves below. Where several checks say genuinely different
+# things, they are separate entries and the first failure is the one reported.
+required:
+  - check: |
       (
         $ra := beckn.message.contract.commitments[0].resources[0].resourceAttributes;
-        $exists($ra.location)
+        $exists($ra.location) and $ra.location.type = "Point"
       )
-    reject: "this capability needs a Point location; the request carries none"
-  - test: |
-      (
-        $ra := beckn.message.contract.commitments[0].resources[0].resourceAttributes;
-        $ra.location.type = "Point"
-      )
-    reject: "this capability needs a Point location; the provider forecasts one point at a time"
+    message: "this capability needs a Point location; the provider forecasts one point at a time"
 
 # The request half decides what the provider is asked for. Whatever it produces
 # IS the request: query parameters for a method with no body, a body for one that
@@ -127,10 +126,19 @@ response: |
   (
     $lat := response.location.lat;
     $lon := response.location.lon;
-    $days := [
-      response.fcstday1, response.fcstday2, response.fcstday3,
-      response.fcstday4, response.fcstday5
-    ];
+    /* However many days the provider sent. It answers fcstday1..fcstdayN and N
+       is whatever the forecast ran to, so naming five would truncate a ten-day
+       answer and mis-handle a one-day one.
+
+       Sorted on the numeric suffix, not the key: the keys sort lexically as
+       fcstday1, fcstday10, fcstday2, and a ten-day forecast delivered in that
+       order would be wrong in a way nothing downstream could detect. */
+    $days := $each(response, function($v, $k) {
+      $contains($k, "fcstday") ? {
+        "n": $number($substringAfter($k, "fcstday")),
+        "day": $v
+      }
+    })^(n).day;
 
     $reading := function($name, $aggregation, $unit, $value) {
       $exists($value) ? {
@@ -197,7 +205,10 @@ response: |
                       "startsAt": $days[0].date,
                       "endsAt": $days[-1].date
                     },
-                    "observations": $map($days, function($day) {
+                    /* Wrapped: JSONata collapses a one-element sequence to a
+                       bare value, so a single-day forecast would answer with an
+                       object where every other N answers with a list. */
+                    "observations": [$map($days, function($day) {
                       {
                         "validity": {
                           "startsAt": $day.date,
@@ -213,7 +224,7 @@ response: |
                           $alert($day.weather_warning ? $day.weather_warning : $day.cloud_message)
                         ]
                       }
-                    })
+                    })]
                   }
                 }
               ]
