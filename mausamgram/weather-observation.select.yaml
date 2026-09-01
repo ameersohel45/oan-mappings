@@ -19,15 +19,38 @@
 # reading them back would be a second name for the same data. Where the answer
 # needs them, it takes them from what the provider echoed.
 
+# The response half follows the openagrinet:WeatherObservation v0.1 schema pack,
+# Direct mode:
+#
+#   OpenAgriNet/network-specs, branch schema-packs-v0.1,
+#   schema/WeatherObservation/v0.1/attributes.yaml
+#
+# Direct mode requires observationType, source, location, generatedAt and
+# parameters. informationMode is what selects those requirements: a catalog
+# resource advertising this capability is OnDemand instead, and carries
+# supportedParameters rather than values.
+#
 # The answer quotes ONE resource, carrying the id the request selected. The
-# forecast days are content of that resource, under resourceAttributes.
-# observations -- not resources of their own.
+# forecast days are content of that resource, under observations.
 #
 # Minting a resource per day was the earlier shape, and it broke the offer: the
 # offer is echoed from the request, so its resourceIds still pointed at the id
 # the consumer selected while the resources carried freshly invented ones.
 # Nothing in the answer resolved that reference. Keeping the selected id is what
-# makes it stay true, rather than patching resourceIds to match.
+# makes it stay true.
+#
+# TWO FIELDS HERE ARE NOT IN THE PACK, and both are deliberate. The pack sets no
+# additionalProperties, so they validate; they are simply not governed by it.
+#
+#   observations   The pack carries one validity and one flat parameters array
+#                  per resource, so it cannot express a five-day forecast in the
+#                  one resource the request selected. Its own examples show one
+#                  resource per period. Keeping the selected id was judged worth
+#                  more than splitting into five resources the consumer never
+#                  asked for. Revisit if the packs gain a series field.
+#   aggregation    The pack's parameter entry is parameter/value/unit only. This
+#                  provider reports a minimum AND a maximum for temperature and
+#                  humidity, which are indistinguishable without it.
 #
 # Fields that are the same for every day -- the point, the source, the
 # observation type -- sit once at the top. Only what varies per day repeats.
@@ -59,6 +82,17 @@ response: |
       }
     };
 
+    /* A warning is a parameter, not a field of its own: the pack has no
+       advisory property but does have an Alert parameter. Unit "1" is what it
+       prescribes for a value that has no unit. */
+    $alert := function($value) {
+      $exists($value) ? {
+        "parameter": "Alert",
+        "unit": "1",
+        "value": $value
+      }
+    };
+
     $selected := beckn.message.contract.commitments[0];
 
     {
@@ -86,7 +120,7 @@ response: |
                 {
                   "id": $selected.resources[0].id,
                   "resourceAttributes": {
-                    "@context": "https://schemas.openagrinet.global/schema/WeatherObservation/v0.1/context.jsonld",
+                    "@context": "https://raw.githubusercontent.com/OpenAgriNet/network-specs/schema-packs-v0.1/schema/WeatherObservation/v0.1/context.jsonld",
                     "@type": "openagrinet:WeatherObservation",
                     "informationMode": "Direct",
                     "observationType": "Forecast",
@@ -98,6 +132,11 @@ response: |
                     "location": {
                       "type": "Point",
                       "coordinates": [$lon, $lat]
+                    },
+                    "generatedAt": $now(),
+                    "validity": {
+                      "startsAt": $days[0].date,
+                      "endsAt": $days[-1].date
                     },
                     "observations": $map($days, function($day) {
                       {
@@ -111,9 +150,9 @@ response: |
                           $reading("Temperature", "Maximum", "Cel", $day.tmax),
                           $reading("Humidity", "Minimum", "%", $day.rhmin),
                           $reading("Humidity", "Maximum", "%", $day.rhmax),
-                          $reading("WindSpeed", "Average", "m/s", $day.wspd)
-                        ],
-                        "advisory": $day.weather_warning ? $day.weather_warning : $day.cloud_message
+                          $reading("WindSpeed", "Average", "m/s", $day.wspd),
+                          $alert($day.weather_warning ? $day.weather_warning : $day.cloud_message)
+                        ]
                       }
                     })
                   }
